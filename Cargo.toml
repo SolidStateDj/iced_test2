@@ -1,0 +1,11 @@
+[package]
+name = "it2"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+iced = "0.12.1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# iced.workspace = true
+iced.features = ["webgl"]
