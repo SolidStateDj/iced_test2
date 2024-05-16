@@ -1,0 +1,14 @@
+[package]
+name = "min_iced_widget"
+version = "0.1.0"
+edition = "2021"
+
+# [target.'cfg(target_arch = "wasm32")'.dependencies]
+# iced.features = ["webgl"]
+
+[dependencies]
+iced = { version = "0.12.1", features = ["advanced"] }
+tracing-subscriber = "0.3"
+
+[patch.crates-io]
+iced_core = { path = '/home/dj/.cargo/registry/src/index.crates.io-6f17d22bba15001f/iced_core-0.12.3' }
