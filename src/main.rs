@@ -1,82 +1,4 @@
-//! This example showcases a drawing a quad.
-mod quad {
-    use iced::advanced::graphics::color;
-    use iced::advanced::layout::{self, Layout};
-    use iced::advanced::renderer;
-    use iced::advanced::widget::{self, Widget};
-    use iced::mouse;
-    use iced::{Border, Color, Element, Length, Rectangle, Shadow, Size};
-
-    pub struct CustomQuad {
-        color: Color,
-        size: f32,
-        radius: [f32; 4],
-        shadow: Shadow,
-    }
-
-    impl CustomQuad {
-        pub fn new(color: Color, size: f32, radius: [f32; 4], shadow: Shadow) -> Self {
-            Self {
-                color,
-                size,
-                radius,
-                shadow,
-            }
-        }
-    }
-
-    impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer> for CustomQuad
-    where
-        Renderer: renderer::Renderer,
-    {
-        fn size(&self) -> Size<Length> {
-            Size {
-                width: Length::Shrink,
-                height: Length::Shrink,
-            }
-        }
-
-        fn layout(
-            &self,
-            _tree: &mut widget::Tree,
-            _renderer: &Renderer,
-            _limits: &layout::Limits,
-        ) -> layout::Node {
-            layout::Node::new(Size::new(self.size, self.size))
-        }
-
-        fn draw(
-            &self,
-            _state: &widget::Tree,
-            renderer: &mut Renderer,
-            _theme: &Theme,
-            _style: &renderer::Style,
-            layout: Layout<'_>,
-            _cursor: mouse::Cursor,
-            _viewport: &Rectangle,
-        ) {
-            renderer.fill_quad(
-                renderer::Quad {
-                    bounds: layout.bounds(),
-                    border: Border {
-                        radius: self.radius.into(),
-                        width: 0.0,
-                        color: Color::from_rgb(1.0, 0.0, 0.0),
-                    },
-                    shadow: self.shadow,
-                },
-                self.color,
-            );
-        }
-    }
-
-    impl<'a, Message> From<CustomQuad> for Element<'a, Message> {
-        fn from(circle: CustomQuad) -> Self {
-            Self::new(circle)
-        }
-    }
-}
-
+mod quad;
 use std::default;
 
 use iced::border::{self, Radius};
@@ -85,9 +7,13 @@ use iced::widget::container::Appearance;
 use iced::widget::{
     button, checkbox, column, container, horizontal_rule, horizontal_space, row, slider, text,
 };
-use iced::{application, Border, Font, Shadow, Vector};
+use iced::{
+    application, event, executor, Application, Border, Command, Event, Font, Shadow, Subscription,
+    Vector,
+};
 use iced::{gradient, window};
-use iced::{Alignment, Background, Color, Element, Length, Radians, Sandbox, Settings};
+use iced::{Alignment, Background, Color, Element, Length, Radians, Settings};
+use tracing_subscriber::layer::SubscriberExt;
 
 pub fn main() -> iced::Result {
     tracing_subscriber::fmt::init();
@@ -101,18 +27,23 @@ pub fn main() -> iced::Result {
     })
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Default)]
+struct EventsWidget {
+    last: Vec<Event>,
+}
+
+#[derive(Debug, Default, Clone)]
 struct Minimal {
     start: Color,
     end: Color,
     angle: Radians,
-    shadowed: bool,
     shadow: Shadow,
     radius: [f32; 4],
     quad_color: Color,
+    events: EventsWidget,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 enum Message {
     StartChanged(Color),
     EndChanged(Color),
@@ -121,32 +52,45 @@ enum Message {
     ShadowOffsetXChanged(f32),
     ShadowOffsetYChanged(f32),
     QuadColorChanged(Color),
+    EventHappened(Event),
 }
 
-impl Sandbox for Minimal {
+impl Application for Minimal {
     type Message = Message;
+    type Theme = Theme;
+    type Executor = executor::Default;
+    type Flags = ();
 
-    fn new() -> Self {
-        Self {
-            start: Color::new(1.0, 0.5, 1.0, 1.0),
-            end: Color::new(0.0, 0.0, 1.0, 1.0),
-            angle: Radians(0.0),
-            shadowed: false,
-            shadow: Shadow {
-                color: Color::from_rgba(0.0, 0.0, 0.0, 0.8),
-                offset: Vector::new(0.0, 8.0),
-                blur_radius: 16.0,
+    fn new(_flags: ()) -> (Minimal, Command<Message>) {
+        (
+            Self {
+                start: Color::new(1.0, 0.5, 1.0, 1.0),
+                end: Color::new(0.0, 0.0, 1.0, 1.0),
+                angle: Radians(0.0),
+                shadow: Shadow {
+                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.8),
+                    offset: Vector::new(0.0, 8.0),
+                    blur_radius: 16.0,
+                },
+                radius: [50.0; 4],
+                quad_color: Color::from_rgba(1.0, 1.0, 1.0, 0.5),
+                events: EventsWidget {
+                    ..Default::default()
+                },
             },
-            radius: [50.0; 4],
-            quad_color: Color::from_rgba(1.0, 1.0, 1.0, 0.5),
-        }
+            Command::none(),
+        )
     }
 
     fn title(&self) -> String {
         String::from("Iced Widget Showcase")
     }
 
-    fn update(&mut self, message: Message) {
+    fn subscription(&self) -> Subscription<Message> {
+        event::listen().map(Message::EventHappened)
+    }
+
+    fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::StartChanged(color) => self.start = color,
             Message::EndChanged(color) => self.end = color,
@@ -159,46 +103,42 @@ impl Sandbox for Minimal {
             Message::ShadowOffsetYChanged(y) => {
                 self.shadow.offset.y = y;
             }
+            Message::EventHappened(event) => {
+                self.events.last.push(event);
+
+                if self.events.last.len() > 2 {
+                    let _ = self.events.last.remove(0);
+                }
+            }
         }
+        Command::none()
     }
 
     fn view(&self) -> Element<Message> {
-        let Self {
-            start,
-            end,
-            angle,
-            shadowed,
-            shadow,
-            radius,
-            quad_color,
-        } = *self;
-
-        // let gradient_box = container(horizontal_space())
-        //     .width(Length::Fill)
-        //     .height(Length::Fill)
-        //     .style(move |_: &_| {
-        //         let gradient = gradient::Linear::new(angle)
-        //             .add_stop(0.0, start)
-        //             .add_stop(1.0, end)
-        //             .into();
-        //
-        //         container::Appearance {
-        //             background: Some(Background::Gradient(gradient)),
-        //             ..Default::default()
-        //         }
-        //     });
-        //
+        let angle = self.angle;
         let ang = format!("{angle:.4}");
+        // if !self.events.last.is_empty() {
+        //     let event = self.events.last[0];
+        //     let event_widget = column![text(format!("{event:?}"))];
+        // }
+
+        let start = self.start;
+        let end = self.end;
 
         let angle_picker = row![
             text("Angle").width(64),
             slider(Radians::RANGE, self.angle, Message::AngleChanged).step(0.01),
             text(format!("{ang:.4}")),
+            // text("0.00"),
         ]
         .spacing(8)
         .padding(8)
         .align_items(Alignment::Center);
 
+        let mut event_widget = text("Nothing Yet...");
+        if !self.events.last.is_empty() {
+            event_widget = text(format!("{:?}", self.events.last[0]))
+        }
         column![
             column![
                 row![text("Gradient").font(Font {
@@ -252,13 +192,19 @@ impl Sandbox for Minimal {
                     .padding(8)
                     .spacing(8),
                 ],
-                // container(horizontal_rule(0)).padding(8),
-                // row![text("Cursor Interactions").font(Font {
-                //     weight: iced::font::Weight::Bold,
-                //     ..Default::default()
-                // })]
-                // .padding(8)
-                // .spacing(8),
+                container(horizontal_rule(0)).padding(8),
+                column![
+                    row![text("Cursor Interactions").font(Font {
+                        weight: iced::font::Weight::Bold,
+                        ..Default::default()
+                    })]
+                    .padding(8)
+                    .spacing(8),
+                    // row![text(format!("{:?}", self.events.last[0]))],
+                    row![text("Most Recent Event:"), event_widget,]
+                        .padding(8)
+                        .spacing(8),
+                ],
             ],
             container(
                 row![
@@ -336,8 +282,8 @@ fn color_picker(label: &str, color: Color) -> Element<'_, Color> {
             Shadow::default(),
         ),
     ]
-    .spacing(8)
     .padding(8)
+    .spacing(8)
     .align_items(Alignment::Center)
     .into()
 }
